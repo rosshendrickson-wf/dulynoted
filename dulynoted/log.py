@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import logging
 
 from google.appengine.ext import ndb
 
@@ -37,10 +38,11 @@ class Log(ndb.Model):
     @property
     def commits(self):
         """Will get all the commits for the Log in ascending order"""
-         query = Commit.query()
-         query = query.filter(Commit.parent_key == self.key)
-         query.order(Commit.revision)
-         return query.fetch(100)
+        query = Commit.query()
+        query = query.filter(Commit.parent_key == self.key,
+                             Commit.revision <= self.latest_revision)
+        query.order(Commit.revision)
+        return query.fetch(100)
 
     @property
     def revisions(self):
@@ -87,10 +89,18 @@ class Commit(ndb.Model):
     parent = ndb.StringProperty(indexed=True)
     parent_key = ndb.KeyProperty(indexed=True)
     data = ndb.BlobProperty(indexed=False)
+    created = ndb.DateTimeProperty(auto_now_add=True)
+    updated = ndb.DateTimeProperty(auto_now=True)
 
     @property
     def get_parent(self):
         return Log.get_by_id(self.parent)
+
+@ndb.transactional()
+def get_new_revision(log_key, num):
+    """Handle a batch of writes"""
+    pass
+
 
 @ndb.transactional()
 def get_new_revision(log_key):

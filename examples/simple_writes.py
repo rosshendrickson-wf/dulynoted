@@ -30,8 +30,8 @@ import webapp2
 
 from dulynoted import Log
 
-class ContextEventsHandler(webapp2.RequestHandler):
-    """Demonstrate using Context Events to make work flows."""
+class SimpleWritesHandler(webapp2.RequestHandler):
+    """Demonstrate writing the a simple log using Furious Async tasks."""
     def get(self):
         from furious.async import Async
         from furious import context
@@ -55,20 +55,13 @@ class ContextEventsHandler(webapp2.RequestHandler):
         # When the Context is exited, the tasks are inserted (if there are no
         # errors).
         logging.info('Async jobs for context batch inserted.')
-
-        self.response.out.write(
-            'Successfully inserted a group of Async jobs.')
+        message = "Successfully inserted a group of %s Async jobs." % str(count)
+        self.response.out.write(message)
 
 
 def async_worker(*args, **kwargs):
-    """This function is called by furious tasks to demonstrate usage."""
-    logging.info("---------------------------------------------------------------------------")
-
     log = Log.get_by_id(args[2])
     log.new_commit(args[1])
-
-    logging.info('Context %s, function %s other %s', *args)
-
     return args
 
 def calculate_rate(log):
@@ -89,11 +82,11 @@ def context_complete(context_id, log_id):
     commits = len(log.commits)
     logging.info('%s commits in the log', commits)
     for commit in log.commits:
-        print commit
+         logging.info("commit revision %s", commit.revision)
     revisions = len(log.revisions)
     logging.info('revisions %s', revisions)
     revisions = log.commit_range(1, 3)
     for commit in revisions:
-        print commit
+         logging.info("commit revision %s", commit.revision)
 
     return context_id
