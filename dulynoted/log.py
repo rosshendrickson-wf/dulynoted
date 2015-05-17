@@ -101,47 +101,41 @@ class Log(ndb.Model):
         commit.parent_key = self.key
         return commit
 
-    def new_shard_commit(self, revision, data):
+    def new_shard_commit(self, shard_revision, data):
         """In the event there is transaction contention on the counter, push
         the commit down to a pull queue with the appropriate tag to be able to
         retrieve it when we pull out history"""
 
-        commit = self._new_commit(revision, data)
-        tag = "-".join((self.name, str(revision)))
-        shard_commit(self.key, tag, revision, commit)
+        commit = self._new_commit(shard_revision, data)
+        tag = "-".join((self.name, str(shard_revision)))
+        revision = RevisionShard.get_by_id(tag)
+
+        if not revision:
+            revision = RevisionShard(id=tag)
+            revision.revision = shard_revision
+            revision.log_key = self.key
+            revision.put()
+
+        commit.shard_key = revision.key
+        commit.put()
+
         return commit
-
-
-@ndb.transactional(xg=True)
-def shard_commit(log_key, tag, shard_revision, commit):
-
-    # I don't like this because it will cause hot tables - need to do some
-    # ancestor and entity group magic here
-    revision = RevisionShard.get_by_id(tag)
-    if not revision:
-        revision = RevisionShard(id=tag)
-        revision.revision = shard_revision
-        revision.log_key = log_key
-
-    revision.count += 1
-    commit.put()
-    revision.commit_keys.append(commit.key)
-    revision.put()
 
 class RevisionShard(ndb.Model):
     """Marks the relationship between the revision and messages in the pull
     queue for that revision"""
     revision = ndb.IntegerProperty(default=0, indexed=True)
-    count = ndb.IntegerProperty(default=0, indexed = False)
     log_key = ndb.KeyProperty(indexed=True)
-    commit_keys = ndb.KeyProperty(repeated=True)
 
     @property
     def commits(self):
         """Pull out the commits that were part of this shard"""
         #There are ways to make this more efficient
-        for commit_key in self.commit_keys:
-            yield commit_key.get()
+        query = Commit.query()
+        query = query.filter(Commit.shard_key == self.key)
+        query.order(Commit.revision)
+        query.order(Commit.created)
+        return query.fetch()
 
 # TODO - Spread out the ID creation so we're not relying on auto create
 class Commit(ndb.Model):
@@ -150,6 +144,7 @@ class Commit(ndb.Model):
     applied = ndb.BooleanProperty(default=False, indexed=True)
     revision = ndb.IntegerProperty(indexed=True)
     parent_key = ndb.KeyProperty(indexed=True)
+    shard_key = ndb.KeyProperty(indexed=True)
     data = ndb.BlobProperty(indexed=False)
     created = ndb.DateTimeProperty(auto_now_add=True)
     updated = ndb.DateTimeProperty(auto_now=True)
