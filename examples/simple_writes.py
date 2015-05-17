@@ -49,7 +49,14 @@ class SimpleWritesHandler(webapp2.RequestHandler):
 
             # Insert some Asyncs.
             for i in xrange(count):
-                ctx.add(target=async_worker, args=[ctx.id, i, log.key.id()])
+                queue = 'a-worker-1'
+
+                if i % 2 == 0:
+                    queue = 'z-worker-2'
+
+                ctx.add(
+                    target=async_worker, queue=queue,
+                    args=[ctx.id, i, log.key.id()])
                 logging.info('Added job %d to context.', i)
 
         # When the Context is exited, the tasks are inserted (if there are no
@@ -68,6 +75,9 @@ def calculate_rate(log):
 
     delta = log.created - log.updated
 
+    if log.latest_revision == 0:
+        return 0
+
     return delta.microseconds / log.latest_revision
 
 def context_complete(context_id, log_id):
@@ -77,16 +87,26 @@ def context_complete(context_id, log_id):
     logging.info('Log Revision %s', log.latest_revision)
     rate = calculate_rate(log)
     logging.info('rate %s microseconds per revision', rate)
-    seconds = 1000000 / rate
-    logging.info('%s revisions per second', seconds)
+    if rate != 0:
+        seconds = 1000000 / rate
+        logging.info('%s revisions per second', seconds)
     commits = len(log.commits)
     logging.info('%s commits in the log', commits)
     for commit in log.commits:
-         logging.info("commit revision %s", commit.revision)
+        logging.info("commit revision %s:%s", commit.revision, commit.created)
     revisions = len(log.revisions)
     logging.info('revisions %s', revisions)
     revisions = log.commit_range(1, 3)
+
+    shards = log.revision_shards
+    logging.info("Had %s revision shards", len(shards))
+    for shard in shards:
+        logging.info("Shard for rev %s", shard.revision)
+        for commit in shard.commits:
+            logging.info("Sharded Commit %s:%s", commit.revision, commit.created)
+
+
     for commit in revisions:
-         logging.info("commit revision %s", commit.revision)
+        logging.info("commit revision %s:%s", commit.revision, commit.created)
 
     return context_id
