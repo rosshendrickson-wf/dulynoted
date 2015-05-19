@@ -44,7 +44,8 @@ collisions occur it just writes out the commit, ties it to the revision and the
 consumer can decide how to process that
 
 Transaction mode is  30/50 commits/second
-Less Contentios mode is ~800 commits/second
+
+Less contentious mode with incrementing ids as fast as possible is ~800 commits/second
 
 # General TODO
 
