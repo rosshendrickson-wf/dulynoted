@@ -24,8 +24,8 @@ example by simply navigating to root. That will insert some tasks that all try
 to write to a specific module. This uses indexes and those need to be updated on
 the appspot.
 
-python
-```
+
+```python
 log = Log()
 log.put()
 log.new_commit(data)
