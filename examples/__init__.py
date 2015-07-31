@@ -21,6 +21,8 @@ using GAE task queues.
 
 import webapp2
 
+from furious.handlers.webapp import AsyncJobHandler
+
 from .simple_writes import SimpleWritesHandler
 
 config = {
@@ -30,5 +32,6 @@ config = {
 }
 
 app = webapp2.WSGIApplication([
+    ('/_queue/async.*', AsyncJobHandler),
     ('/', SimpleWritesHandler)
 ], config=config)

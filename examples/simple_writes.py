@@ -25,88 +25,133 @@
 
 
 import logging
+import time
 
 import webapp2
 
 from dulynoted import Log
 
+
 class SimpleWritesHandler(webapp2.RequestHandler):
     """Demonstrate writing the a simple log using Furious Async tasks."""
     def get(self):
-        from furious.async import Async
-        from furious import context
 
         count = int(self.request.get('tasks', 5))
 
-        # Create a new furious Context.
-        with context.new() as ctx:
+        test_run = [10, 10, 10, 100, 100, 100, 300, 300, 300, 600, 600, 600, 1200, 1200, 1200, 2400, 2400]
+        test_run = [10, 15, 20]
 
-            # Set a completion event handler.
-            log = Log()
-            log.put()
-            ctx.set_event_handler('complete',
-                                  Async(context_complete, args=[ctx.id, log.key.id()]))
+        log = Log()
+        log.put()
+        log_id = log.key.id()
 
-            # Insert some Asyncs.
-            for i in xrange(count):
-                queue = 'a-worker-1'
-
-                if i % 2 == 0:
-                    queue = 'z-worker-2'
-
-                ctx.add(
-                    target=async_worker, queue=queue,
-                    args=[ctx.id, i, log.key.id()])
-                logging.info('Added job %d to context.', i)
-
+        run(count, test_run, log_id)
         # When the Context is exited, the tasks are inserted (if there are no
         # errors).
         logging.info('Async jobs for context batch inserted.')
-        message = "Successfully inserted a group of %s Async jobs." % str(count)
+        message = "Inserted a benchmark of {} Async jobs. log_id {}".format(
+            str(test_run), log_id)
         self.response.out.write(message)
 
 
+def run(count, test_run, test_id):
+    from furious.async import Async
+    from furious import context
+
+    # Create a new furious Context.
+    with context.new() as ctx:
+
+        # Set a completion event handler.
+        log = Log()
+        log.put()
+        log_id = log.key.id()
+
+        handler = Async(context_complete,
+                        args=[ctx.id, log_id, time.time(), test_run, test_id, count])
+
+        ctx.set_event_handler('complete', handler)
+
+        # Insert some Asyncs.
+        for i in xrange(count):
+            queue = 'a-worker-1'
+
+            ctx.add(
+                target=async_worker, queue=queue,
+                args=[ctx.id, i, log_id])
+
+    logging.info('Added %d jobs to context.', count)
+
+
 def async_worker(*args, **kwargs):
-    log = Log.get_by_id(args[2])
+    log_id = str(args[2]) + str(args[1])
+    log_id = args[2]
+    log = Log.get_by_id(log_id)
     log.new_commit(args[1])
     return args
 
+
 def calculate_rate(log):
+
+    delta = log.created - log.updated
+    logging.info("Total LOG test run took {} seconds".format(
+        abs(delta.total_seconds())))
+
+    if log.latest_revision == 0:
+        return 0
+
+    return abs(delta.total_seconds()) / log.latest_revision
+
+
+def calculate_commit_rate(log):
 
     delta = log.created - log.updated
 
     if log.latest_revision == 0:
         return 0
 
-    return delta.microseconds / log.latest_revision
+    return abs(delta.total_seconds()) / len(log.commits)
 
-def context_complete(context_id, log_id):
+
+def context_complete(context_id, log_id, start_time, test_run, test_id, count):
     """Log out that the context is complete."""
     logging.info('Context %s is.......... DONE.', context_id)
+    complete_time = time.time()
+
+    analysis = {}
+
+    analysis['complete_time'] = complete_time - start_time
+
+    if len(test_run) > 0:
+        count = test_run[0]
+        test_run = test_run[1:]
+        logging.info("Starting run for %s", count)
+        run(count, test_run, test_id)
+
+    # Current Run
     log = Log.get_by_id(log_id)
+    delta = log.created - log.updated
+    analysis['log_time'] = abs(delta.total_seconds())
+
     logging.info('Log Revision %s', log.latest_revision)
-    rate = calculate_rate(log)
-    logging.info('rate %s microseconds per revision', rate)
-    if rate != 0:
-        seconds = 1000000 / rate
-        logging.info('%s revisions per second', seconds)
-    commits = len(log.commits)
-    logging.info('%s commits in the log', commits)
-    for commit in log.commits:
-        logging.info("commit revision %s:%s", commit.revision, commit.created)
-    revisions = len(log.revisions)
-    logging.info('revisions %s', revisions)
-    revisions = log.commit_range(1, 3)
+    calculate_rate(log)
+    logging.info('Total Task time: %s', start_time - complete_time)
+    len_commits = len(log.commits)
+    logging.info('%s commits in the log', len_commits)
+    analysis['log_commits'] = len_commits
+    analysis['count'] = count
+    analysis['latest_rev'] = log.latest_revision
 
-    shards = log.revision_shards
-    logging.info("Had %s revision shards", len(shards))
-    for shard in shards:
-        logging.info("Shard for rev %s", shard.revision)
-        for commit in shard.commits:
-            logging.info("Sharded Commit %s:%s", commit.revision, commit.created)
+    test_log = Log.get_by_id(test_id)
+    if not test_log:
+        logging.info("No test log for %s", test_id)
+        return context_id
 
+    test_log.new_commit(analysis)
 
-    for commit in revisions:
-        logging.info("commit revision %s:%s", commit.revision, commit.created)
+    # Final case
+    if not test_run:
+        logging.info("FINAL CALLBACK")
+        for commit in test_log.commits:
+            logging.info(commit.data)
 
     return context_id
