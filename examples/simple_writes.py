@@ -39,7 +39,7 @@ class SimpleWritesHandler(webapp2.RequestHandler):
         count = int(self.request.get('tasks', 5))
 
         test_run = [10, 10, 10, 100, 100, 100, 300, 300, 300, 600, 600, 600, 1200, 1200, 1200, 2400, 2400]
-        test_run = [10, 15, 20]
+        #test_run = [10, 15, 20]
 
         log = Log()
         log.put()
@@ -83,10 +83,10 @@ def run(count, test_run, test_id):
 
 
 def async_worker(*args, **kwargs):
-    log_id = str(args[2]) + str(args[1])
-    log_id = args[2]
-    log = Log.get_by_id(log_id)
-    log.new_commit(args[1])
+    #log_id = str(args[2]) + str(args[1])
+    #log_id = args[2]
+    #log = Log.get_by_id(log_id)
+    #log.new_commit(args[1])
     return args
 
 
@@ -119,8 +119,6 @@ def context_complete(context_id, log_id, start_time, test_run, test_id, count):
 
     analysis = {}
 
-    analysis['complete_time'] = complete_time - start_time
-
     if len(test_run) > 0:
         count = test_run[0]
         test_run = test_run[1:]
@@ -130,16 +128,18 @@ def context_complete(context_id, log_id, start_time, test_run, test_id, count):
     # Current Run
     log = Log.get_by_id(log_id)
     delta = log.created - log.updated
-    analysis['log_time'] = abs(delta.total_seconds())
 
     logging.info('Log Revision %s', log.latest_revision)
-    calculate_rate(log)
+    #calculate_rate(log)
     logging.info('Total Task time: %s', start_time - complete_time)
     len_commits = len(log.commits)
     logging.info('%s commits in the log', len_commits)
-    analysis['log_commits'] = len_commits
+
+    analysis['complete_time'] = complete_time - start_time
+    #analysis['log_time'] = "{}".format(abs(delta.total_seconds()))
+    #analysis['log_commits'] = len_commits
     analysis['count'] = count
-    analysis['latest_rev'] = log.latest_revision
+    #analysis['latest_rev'] = log.latest_revision
 
     test_log = Log.get_by_id(test_id)
     if not test_log:
@@ -150,7 +150,10 @@ def context_complete(context_id, log_id, start_time, test_run, test_id, count):
 
     # Final case
     if not test_run:
+        delta = test_log.created - test_log.updated
         logging.info("FINAL CALLBACK")
+        logging.info("Benchmark took {} seconds".format(
+            abs(delta.total_seconds())))
         for commit in test_log.commits:
             logging.info(commit.data)
 
