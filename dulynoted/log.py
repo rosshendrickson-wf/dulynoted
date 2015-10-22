@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-import logging
-
 from google.appengine.ext import ndb
-from google.appengine.ext.db import TransactionFailedError
-from furious.batcher import Message
 
 
 class Log(ndb.Model):
@@ -26,7 +22,6 @@ class Log(ndb.Model):
     transactions on the write portion of the work.
     """
 
-    parent = ndb.KeyProperty()
     created = ndb.DateTimeProperty(auto_now_add=True)
     updated = ndb.DateTimeProperty(auto_now=True)
     latest_revision = ndb.IntegerProperty(default=0)
@@ -47,53 +42,18 @@ class Log(ndb.Model):
         query.order(Commit.created)
         return query.fetch()
 
-    @property
-    def revisions(self):
-        query = Commit.query(Commit.parent_key == self.key, projection=[Commit.revision])
-        query.order(Commit.revision)
-        return query.fetch(10)
-
-    @property
-    def revision_shards(self):
-        query = RevisionShard.query(RevisionShard.log_key == self.key)
-        query.order(RevisionShard.revision)
-        return query.fetch(10)
-
-    def commit_range(self, bottom, top, applied=False):
-
-        query = Commit.query(Commit.parent_key == self.key, Commit.revision >= bottom,
-                           Commit.revision <= top, Commit.applied == applied)
-        query.order(Commit.revision)
-        return query.fetch(10)
-
-    def load_commit(revision):
-        return Commit.query(Commit.revision == revision).fetch()
-
-    @property
-    def uncommitted():
-        query = Commit.query(Commit.revision >= self.applied_revision,
-                             Commit.applied == False)
-        return query.fetch(10)
-
     def new_commit(self, data):
         """Will transcationally increment this model's revision and then use
         that new revision for the commit.
         """
         data = str(data)
-        new_revision = self.latest_revision
-
-        #return self.new_shard_commit(new_revision, data)
-
-        try:
-            new_revision = get_new_revision(self.key)
-        except TransactionFailedError:
-            return self.new_shard_commit(new_revision, data)
-
+        new_revision = get_new_revision(self.key)
         commit = self._new_commit(new_revision, data)
         commit.put()
         return commit
 
     def _new_commit(self, new_revision, data):
+        """Will build a new commit based on the data"""
         commit = Commit()
         commit.revision = new_revision
         commit.data = data
@@ -101,50 +61,12 @@ class Log(ndb.Model):
         commit.parent_key = self.key
         return commit
 
-    def new_shard_commit(self, shard_revision, data):
-        """In the event there is transaction contention on the counter, push
-        the commit down to a pull queue with the appropriate tag to be able to
-        retrieve it when we pull out history"""
 
-        commit = self._new_commit(shard_revision, data)
-        tag = "-".join((self.name, str(shard_revision)))
-        revision = RevisionShard.get_by_id(tag)
-
-        if not revision:
-            revision = RevisionShard(id=tag)
-            revision.revision = shard_revision
-            revision.log_key = self.key
-            revision.put()
-
-        commit.shard_key = revision.key
-        commit.put()
-
-        return commit
-
-class RevisionShard(ndb.Model):
-    """Marks the relationship between the revision and messages in the pull
-    queue for that revision"""
-    revision = ndb.IntegerProperty(default=0, indexed=True)
-    log_key = ndb.KeyProperty(indexed=True)
-
-    @property
-    def commits(self):
-        """Pull out the commits that were part of this shard"""
-        #There are ways to make this more efficient
-        query = Commit.query()
-        query = query.filter(Commit.shard_key == self.key)
-        query.order(Commit.revision)
-        query.order(Commit.created)
-        return query.fetch()
-
-# TODO - Spread out the ID creation so we're not relying on auto create
 class Commit(ndb.Model):
     """Roughly designed to hold a unit of work to be done at another point of
     time or to store information for a specific revision of some process"""
-    applied = ndb.BooleanProperty(default=False, indexed=True)
     revision = ndb.IntegerProperty(indexed=True)
     parent_key = ndb.KeyProperty(indexed=True)
-    shard_key = ndb.KeyProperty(indexed=True)
     data = ndb.BlobProperty(indexed=False)
     created = ndb.DateTimeProperty(auto_now_add=True)
     updated = ndb.DateTimeProperty(auto_now=True)
