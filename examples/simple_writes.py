@@ -38,8 +38,8 @@ class SimpleWritesHandler(webapp2.RequestHandler):
 
         count = int(self.request.get('tasks', 5))
 
-        test_run = [10, 10, 10, 100, 100, 100, 300, 300, 300, 600, 600, 600, 1200, 1200, 1200, 2400, 2400]
-        #test_run = [10, 15, 20]
+        #test_run = [10, 10, 10, 100, 100, 100, 300, 300, 300, 600, 600, 600, 1200, 1200, 1200, 2400, 2400]
+        test_run = [10, 10, 10]
 
         log = Log()
         log.put()
@@ -83,10 +83,9 @@ def run(count, test_run, test_id):
 
 
 def async_worker(*args, **kwargs):
-    #log_id = str(args[2]) + str(args[1])
-    #log_id = args[2]
-    #log = Log.get_by_id(log_id)
-    #log.new_commit(args[1])
+    log_id = args[2]
+    log = Log.get_by_id(log_id)
+    log.new_commit(args[1])
     return args
 
 
@@ -130,16 +129,12 @@ def context_complete(context_id, log_id, start_time, test_run, test_id, count):
     delta = log.created - log.updated
 
     logging.info('Log Revision %s', log.latest_revision)
-    #calculate_rate(log)
     logging.info('Total Task time: %s', start_time - complete_time)
     len_commits = len(log.commits)
     logging.info('%s commits in the log', len_commits)
 
     analysis['complete_time'] = complete_time - start_time
-    #analysis['log_time'] = "{}".format(abs(delta.total_seconds()))
-    #analysis['log_commits'] = len_commits
     analysis['count'] = count
-    #analysis['latest_rev'] = log.latest_revision
 
     test_log = Log.get_by_id(test_id)
     if not test_log:
