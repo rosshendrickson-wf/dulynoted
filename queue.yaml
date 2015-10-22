@@ -2,13 +2,13 @@ queue:
 # PUSH QUEUES
 - name: default
   rate: 500/s
-  bucket_size: 100
+  bucket_size: 500
 
 - name: a-worker-1
   rate: 500/s
-  bucket_size: 100
+  bucket_size: 500
 
-- name: z-worker-2
+- name: a-worker-2
   rate: 500/s
   bucket_size: 100
 
